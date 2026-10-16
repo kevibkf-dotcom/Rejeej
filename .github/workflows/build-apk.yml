@@ -1,0 +1,81 @@
+name: Compilar APK Renova tu mente sin conexión
+
+on:
+  workflow_dispatch:
+  push:
+
+jobs:
+  build:
+    runs-on: ubuntu-latest
+
+    steps:
+      - name: Descargar proyecto
+        uses: actions/checkout@v4
+
+      - name: Configurar Java
+        uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+
+      - name: Instalar componentes Android
+        run: |
+          SDKMANAGER="$(find "$ANDROID_HOME/cmdline-tools" -type f -name sdkmanager | head -n 1)"
+
+          if [ -z "$SDKMANAGER" ]; then
+            echo "No se encontró sdkmanager"
+            exit 1
+          fi
+
+          yes | "$SDKMANAGER" --sdk_root="$ANDROID_HOME" --licenses || true
+
+          "$SDKMANAGER" --sdk_root="$ANDROID_HOME" \
+            "platform-tools" \
+            "platforms;android-35" \
+            "build-tools;35.0.0"
+
+      - name: Configurar Gradle
+        uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+
+      - name: Extraer proyecto Renova tu mente
+        run: |
+          unzip -q "Renova-tu-mente-GitHub-100-offline.zip"
+
+      - name: Verificar estructura del proyecto
+        run: |
+          if [ ! -d "renova" ]; then
+            echo "ERROR: no se encontró la carpeta renova"
+            echo ""
+            echo "Contenido encontrado:"
+            find . -maxdepth 3 -type f | sort | head -n 100
+            exit 1
+          fi
+
+      - name: Preparar Biblia offline
+        run: |
+          cd renova
+
+          if [ -f "tools/prepare_bible.py" ]; then
+            python3 tools/prepare_bible.py
+          else
+            echo "No se encontró tools/prepare_bible.py"
+            echo "La Biblia debe estar incluida dentro del proyecto."
+          fi
+
+      - name: Compilar APK
+        run: |
+          cd renova
+          gradle assembleDebug
+
+      - name: Verificar APK
+        run: |
+          find renova/app/build/outputs/apk/debug -name "*.apk" -print
+
+      - name: Publicar APK
+        uses: actions/upload-artifact@v4
+        with:
+          name: Renova-tu-mente-APK-sin-conexion
+          path: renova/app/build/outputs/apk/debug/*.apk
+          if-no-files-found: error
